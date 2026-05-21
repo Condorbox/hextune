@@ -5,6 +5,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use crate::modules::library::sorter::SortField;
+use crate::utils::PREV_RESTART_THRESHOLD_DEFAULT;
 
 /// Complete application state (single source of truth)
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -35,10 +36,19 @@ pub struct ConfigState {
 
     #[serde(default)]
     pub repeat: RepeatMode,
+
+    /// Percentage (5–100) of song duration after which "previous" restarts
+    /// the current track instead of jumping to the prior one.
+    #[serde(default = "default_prev_restart_threshold")]
+    pub prev_restart_threshold: u8,
 }
 
 fn default_volume() -> f32 {
     1.0
+}
+
+fn default_prev_restart_threshold() -> u8 {
+    PREV_RESTART_THRESHOLD_DEFAULT
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -114,6 +124,7 @@ impl Default for ConfigState {
             volume: default_volume(),
             shuffle: false,
             repeat: Default::default(),
+            prev_restart_threshold: default_prev_restart_threshold(),
         }
     }
 }
@@ -299,6 +310,9 @@ impl AppState {
                 UiEvent::SearchQueryChanged { query } => {
                     self.ui.search_query = query.clone();
                     // Note: Actual search is triggered by LibraryEvent::SearchRequested
+                }
+                UiEvent::PrevThresholdSet { threshold } => {
+                    self.config.prev_restart_threshold = *threshold;
                 }
                 _ => {}
             },
@@ -838,6 +852,20 @@ mod tests {
         }));
 
         assert_eq!(state.ui.search_query, "bowie");
+    }
+
+    // ── UiEvent::PrevThresholdSet ─────────────────────────────────────────────────
+
+    #[test]
+    fn prev_threshold_set_updates_config() {
+        let mut state = AppState::default();
+        assert_eq!(state.config.prev_restart_threshold, PREV_RESTART_THRESHOLD_DEFAULT);
+
+        apply(&mut state, AppEvent::Ui(UiEvent::PrevThresholdSet { threshold: 25 }));
+        assert_eq!(state.config.prev_restart_threshold, 25);
+
+        apply(&mut state, AppEvent::Ui(UiEvent::PrevThresholdSet { threshold: 5 }));
+        assert_eq!(state.config.prev_restart_threshold, 5);
     }
 
     // ── Shutdown / no-op ──────────────────────────────────────────────────────

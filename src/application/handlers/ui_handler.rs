@@ -1,7 +1,8 @@
+use std::time::Duration;
 use crate::application::handlers::HandlerContext;
 use crate::core::events::{AppEvent, LibraryEvent, PlaybackEvent, UiEvent};
-use crate::core::models::RepeatMode;
-use crate::utils::{volume_percent_to_amplitude, PREV_RESTART_THRESHOLD};
+use crate::core::models::{RepeatMode, Song};
+use crate::utils::{volume_percent_to_amplitude};
 use anyhow::Result;
 use crate::modules::library::sorter::SortField;
 
@@ -68,15 +69,11 @@ impl UiHandler {
                 // RepeatMode::One does not loop on manual nav — user explicitly wants to move.
                 let (current_index, library_len, loop_playlist, should_restart) = {
                     let state = ctx.state.lock().unwrap();
-                    let should_restart = state
-                        .playback
-                        .current_song
-                        .as_ref()
-                        .and_then(|s| s.duration)
-                        .is_some_and(|d| {
-                            !d.is_zero() &&
-                                state.playback.current_elapsed > d.mul_f64(PREV_RESTART_THRESHOLD)
-                        });
+                    let should_restart = Self::should_restart_current(
+                        state.playback.current_elapsed,
+                        state.playback.current_song.as_ref(),
+                        state.config.prev_restart_threshold,
+                    );
 
                     (
                         state.ui.selected_index,
@@ -85,7 +82,7 @@ impl UiHandler {
                         should_restart,
                     )
                 };
-                
+
                 if should_restart {
                     // Re-play the current song from the beginning.
                     let song = ctx.state.lock().unwrap().playback.current_song.clone();
@@ -189,6 +186,11 @@ impl UiHandler {
                     .send(AppEvent::Library(LibraryEvent::SortRequested { field: next_field }))?;
             }
 
+            UiEvent::PrevThresholdSet { .. } => {
+                // State already updated by AppState::apply_event
+                ctx.persist_state()?;
+            }
+
             UiEvent::QuitRequested => {
                 ctx.event_tx.send(AppEvent::Shutdown)?;
             }
@@ -219,5 +221,22 @@ impl UiHandler {
             .send(AppEvent::Playback(PlaybackEvent::Shuffle { enabled }))?;
 
         Ok(())
+    }
+
+    /// Returns `true` if playback has progressed past `threshold_pct`% of the song,
+    /// meaning "previous" should restart the current track rather than skip back.
+    ///
+    /// Returns `false` when there is no song playing or the song has no known duration,
+    /// so the caller always falls back to normal backwards navigation.
+    fn should_restart_current(elapsed: Duration, song: Option<&Song>, threshold_pct: u8) -> bool {
+        song.and_then(|s| s.duration)
+            .is_some_and(|d| {
+                if d.is_zero() {
+                    return false;
+                }
+
+                let factor = f64::from(threshold_pct) / 100.0;
+                elapsed > d.mul_f64(factor)
+            })
     }
 }

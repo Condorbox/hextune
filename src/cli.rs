@@ -82,6 +82,14 @@ pub enum Commands {
 
     /// Show the current status of the player
     Status,
+
+    /// Set the previous-track restart threshold (or show current if omitted)
+    PrevThreshold {
+        /// Percentage of song played after which "previous" restarts the current
+        /// track instead of skipping back. Accepted range: 5–100.
+        #[arg(value_parser = clap::value_parser!(u8).range(5..=100))]
+        threshold: Option<u8>,
+    },
 }
 
 impl ValueEnum for RepeatMode {

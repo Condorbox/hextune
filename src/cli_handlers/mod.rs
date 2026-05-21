@@ -19,7 +19,7 @@ pub use playlist::PlaylistCommand;
 pub use refresh::RefreshCommand;
 pub use search::SearchCommand;
 pub use select::SelectCommand;
-pub use settings::{LoopCommand, ShuffleCommand, VolumeCommand};
+pub use settings::{LoopCommand, ShuffleCommand, VolumeCommand, PrevThresholdCommand};
 pub use sort::SortCommand;
 pub use status::StatusCommand;
 
@@ -51,5 +51,6 @@ pub fn from_cli(cmd: Commands) -> Box<dyn CliCommand> {
         Commands::Loop { mode } => Box::new(LoopCommand { mode }),
         Commands::Sort { by } => Box::new(SortCommand { field: by }),
         Commands::Status => Box::new(StatusCommand),
+        Commands::PrevThreshold { threshold } => Box::new(PrevThresholdCommand { threshold }),
     }
 }
