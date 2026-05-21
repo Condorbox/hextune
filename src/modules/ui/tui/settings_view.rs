@@ -1,4 +1,4 @@
-use crate::modules::ui::tui::settings_state::{PathValidation, SettingsField, SettingsState};
+use crate::modules::ui::tui::settings_state::{PathValidation, SettingsField, SettingsState, ThresholdValidation};
 use crate::modules::input::{InputAction, InputMode, KeyConfig};
 use crate::modules::ui::key_hints;
 use crate::utils::repeat_label;
@@ -12,7 +12,7 @@ use ratatui::{
 use crossterm::event::KeyCode;
 
 pub fn draw(f: &mut Frame, settings: &SettingsState, key_config: &KeyConfig) {
-    let height_pct = if settings.is_editing_path() { 60 } else { 50 };
+    let height_pct = if settings.is_editing_path() { 70 } else { 65 };
     let area = centered_rect(60, height_pct, f.area());
     f.render_widget(Clear, area);
     f.render_widget(
@@ -30,6 +30,11 @@ pub fn draw(f: &mut Frame, settings: &SettingsState, key_config: &KeyConfig) {
         height: area.height.saturating_sub(4),
     };
 
+    let threshold_error_height = match settings.threshold_validation() {
+        ThresholdValidation::Error(_) => 1,
+        ThresholdValidation::Idle => 0,
+    };
+
     let path_error_height = match settings.path_validation() {
         PathValidation::Error(_) => 1,
         PathValidation::Idle => 0,
@@ -40,6 +45,8 @@ pub fn draw(f: &mut Frame, settings: &SettingsState, key_config: &KeyConfig) {
         .constraints([
             Constraint::Length(3),                 // Volume
             Constraint::Length(3),                 // Repeat
+            Constraint::Length(3),                 // Prev restart threshold
+            Constraint::Length(threshold_error_height), // Threshold inline error (0 or 1)
             Constraint::Length(3),                 // Music Path input
             Constraint::Length(path_error_height), // Inline error (0 or 1)
             Constraint::Min(0),                    // spacer
@@ -49,9 +56,11 @@ pub fn draw(f: &mut Frame, settings: &SettingsState, key_config: &KeyConfig) {
 
     draw_volume(f, settings, key_config, chunks[0]);
     draw_repeat(f, settings, key_config, chunks[1]);
-    draw_path(f, settings, key_config, chunks[2]);
-    draw_path_error(f, settings, chunks[3]);
-    draw_help(f, settings, key_config, chunks[5]);
+    draw_prev_threshold(f, settings, key_config, chunks[2]);
+    draw_threshold_error(f, settings, chunks[3]);
+    draw_path(f, settings, key_config, chunks[4]);
+    draw_path_error(f, settings, chunks[5]);
+    draw_help(f, settings, key_config, chunks[7]);
 }
 
 fn draw_volume(f: &mut Frame, settings: &SettingsState, key_config: &KeyConfig, area: Rect) {
@@ -141,6 +150,68 @@ fn draw_repeat(f: &mut Frame, settings: &SettingsState, key_config: &KeyConfig, 
 
     f.render_widget(Paragraph::new(label).style(field_style(selected)), area);
 }
+
+fn draw_prev_threshold(f: &mut Frame, settings: &SettingsState, key_config: &KeyConfig, area: Rect) {
+    let selected = settings.selected() == SettingsField::PrevRestartThreshold;
+    let editing = selected && settings.is_editing_prev_threshold();
+
+    let label = if editing {
+        let left = key_hints::pick_binding_with_preference(
+            key_config, InputMode::Settings, InputAction::SettingsLeft,
+            &[key_hints::kb(KeyCode::Left)],
+        );
+        let right = key_hints::pick_binding_with_preference(
+            key_config, InputMode::Settings, InputAction::SettingsRight,
+            &[key_hints::kb(KeyCode::Right)],
+        );
+        let confirm = key_hints::pick_binding_with_preference(
+            key_config, InputMode::Settings, InputAction::SettingsConfirm,
+            &[key_hints::kb(KeyCode::Enter)],
+        );
+        let cancel = key_hints::pick_binding_with_preference(
+            key_config, InputMode::Settings, InputAction::SettingsClose,
+            &[key_hints::kb(KeyCode::Esc)],
+        );
+        format!(
+            "Prev restart: {}%  [{}/{} adjust • 0-9 type • {} confirm • {} cancel]",
+            settings.temp_prev_threshold(),
+            key_hints::format_binding_opt(left),
+            key_hints::format_binding_opt(right),
+            key_hints::format_binding_opt(confirm),
+            key_hints::format_binding_opt(cancel),
+        )
+    } else if selected {
+        let confirm = key_hints::pick_binding_with_preference(
+            key_config, InputMode::Settings, InputAction::SettingsConfirm,
+            &[key_hints::kb(KeyCode::Enter)],
+        );
+        format!(
+            "Prev restart: {}%  [{} to edit]",
+            settings.temp_prev_threshold(),
+            key_hints::format_binding_opt(confirm),
+        )
+    } else {
+        format!("Prev restart: {}%", settings.temp_prev_threshold())
+    };
+
+    f.render_widget(Paragraph::new(label).style(field_style(selected)), area);
+}
+
+fn draw_threshold_error(f: &mut Frame, settings: &SettingsState, area: Rect) {
+    if let ThresholdValidation::Error(msg) = settings.threshold_validation() {
+        f.render_widget(
+            Paragraph::new(Line::from(vec![
+                Span::styled(
+                    "  ✗ ",
+                    Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(msg.as_str(), Style::default().fg(Color::Red)),
+            ])),
+            area,
+        );
+    }
+}
+
 
 fn draw_path(f: &mut Frame, settings: &SettingsState, key_config: &KeyConfig, area: Rect) {
     let selected = settings.selected() == SettingsField::MusicPath;
@@ -269,6 +340,14 @@ fn draw_help(f: &mut Frame, settings: &SettingsState, key_config: &KeyConfig, ar
             key_hints::format_binding_opt(confirm),
             key_hints::format_binding_opt(cancel)
         )
+    } else if settings.is_editing_prev_threshold() {
+        format!(
+            "{}/{}: Adjust  •  5-100: Type value  •  {}: Confirm  •  {}: Cancel",
+            key_hints::format_binding_opt(left),
+            key_hints::format_binding_opt(right),
+            key_hints::format_binding_opt(confirm),
+            key_hints::format_binding_opt(cancel),
+        )
     } else if settings.is_editing_path() {
         "Type path  •  Enter: Confirm  •  Esc: Cancel  •  Ctrl+U: Clear".to_string()
     } else {
@@ -291,6 +370,13 @@ fn draw_help(f: &mut Frame, settings: &SettingsState, key_config: &KeyConfig, ar
                     close_keys
                 )
             }
+            SettingsField::PrevRestartThreshold => format!(
+                "{}/{}: Navigate  •  {}: Edit threshold  •  {}: Close",
+                key_hints::format_binding_opt(nav_up),
+                key_hints::format_binding_opt(nav_down),
+                key_hints::format_binding_opt(confirm),
+                close_keys,
+            ),
             SettingsField::MusicPath => format!(
                 "{}/{}: Navigate  •  {}: Edit path  •  {}: Close",
                 key_hints::format_binding_opt(nav_up),

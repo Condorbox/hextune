@@ -2,11 +2,12 @@ use crate::application::state::AppState;
 use crate::core::events::UiEvent;
 use crate::core::models::RepeatMode;
 use crate::modules::input::InputAction;
-use crate::utils::{amplitude_to_volume, VOLUME_MAX, VOLUME_STEP};
+use crate::utils::{amplitude_to_volume, PREV_RESTART_THRESHOLD_DEFAULT, PREV_RESTART_THRESHOLD_MIN, PREV_RESTART_THRESHOLD_STEP, VOLUME_MAX, VOLUME_STEP};
 
 const SETTINGS_FIELDS: &[SettingsField] = &[
     SettingsField::Volume,
     SettingsField::Repeat,
+    SettingsField::PrevRestartThreshold,
     SettingsField::MusicPath,
 ];
 
@@ -15,6 +16,7 @@ pub enum SettingsField {
     MusicPath,
     Volume,
     Repeat,
+    PrevRestartThreshold
 }
 
 /// Inline validation state for the path field.
@@ -26,6 +28,16 @@ pub enum PathValidation {
     Error(String),
 }
 
+/// Inline validation state for the previous-track restart threshold field.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ThresholdValidation {
+    /// User hasn't tried to confirm yet, or is still typing.
+    Idle,
+    /// Last confirm attempt failed
+    Error(String),
+}
+
+
 #[derive(Debug, Clone)]
 pub struct SettingsState {
     open: bool,
@@ -36,6 +48,10 @@ pub struct SettingsState {
     temp_volume: u8,
 
     temp_repeat: RepeatMode,
+
+    editing_prev_threshold: bool,
+    temp_prev_threshold: u8,
+    threshold_validation: ThresholdValidation,
 
     editing_path: bool,
     temp_path: String,
@@ -50,6 +66,9 @@ impl Default for SettingsState {
             editing_volume: false,
             temp_volume: VOLUME_MAX,
             temp_repeat: RepeatMode::default(),
+            editing_prev_threshold: false,
+            temp_prev_threshold: PREV_RESTART_THRESHOLD_DEFAULT,
+            threshold_validation: ThresholdValidation::Idle,
             editing_path: false,
             temp_path: String::new(),
             path_validation: PathValidation::Idle,
@@ -70,6 +89,8 @@ impl SettingsState {
         self.open = false;
         self.editing_volume = false;
         self.editing_path = false;
+        self.threshold_validation = ThresholdValidation::Idle;
+        self.editing_prev_threshold = false;
         self.path_validation = PathValidation::Idle;
     }
 
@@ -85,12 +106,24 @@ impl SettingsState {
         self.editing_path
     }
 
+    pub fn is_editing_prev_threshold(&self) -> bool {
+        self.editing_prev_threshold
+    }
+
+    pub fn threshold_validation(&self) -> &ThresholdValidation {
+        &self.threshold_validation
+    }
+
     pub fn temp_volume(&self) -> u8 {
         self.temp_volume
     }
 
     pub fn temp_repeat(&self) -> RepeatMode {
         self.temp_repeat
+    }
+
+    pub fn temp_prev_threshold(&self) -> u8 {
+        self.temp_prev_threshold
     }
 
     pub fn temp_path(&self) -> &str {
@@ -116,6 +149,11 @@ impl SettingsState {
         if !self.editing_volume || self.selected != SettingsField::Volume {
             self.temp_volume = amplitude_to_volume(app_state.config.volume);
         }
+
+        if !self.editing_prev_threshold || self.selected != SettingsField::PrevRestartThreshold {
+            self.temp_prev_threshold = app_state.config.prev_restart_threshold;
+            self.threshold_validation = ThresholdValidation::Idle;
+        }
     }
 
     pub fn apply_action(&mut self, action: InputAction) -> Vec<UiEvent> {
@@ -128,6 +166,11 @@ impl SettingsState {
 
         if self.editing_volume {
             self.apply_volume_action(action, &mut events);
+            return events;
+        }
+
+        if self.editing_prev_threshold {
+            self.apply_prev_threshold_action(action, &mut events);
             return events;
         }
 
@@ -175,6 +218,59 @@ impl SettingsState {
                 let new_val = (self.temp_volume % 10) * 10 + digit;
                 if new_val <= VOLUME_MAX {
                     self.temp_volume = new_val;
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn apply_prev_threshold_action(&mut self, action: InputAction, events: &mut Vec<UiEvent>) {
+        match action {
+            InputAction::SettingsConfirm => {
+                if self.temp_prev_threshold < PREV_RESTART_THRESHOLD_MIN {
+                    // Keep editing and surface the error explicitly on confirm.
+                    self.threshold_validation = ThresholdValidation::Error(format!(
+                        "Minimum is {}%.",
+                        PREV_RESTART_THRESHOLD_MIN
+                    ));
+                } else {
+                    self.editing_prev_threshold = false;
+                    self.threshold_validation = ThresholdValidation::Idle;
+                    events.push(UiEvent::PrevThresholdSet {
+                        threshold: self.temp_prev_threshold,
+                    });
+                }
+            }
+            InputAction::SettingsClose => {
+                self.editing_prev_threshold = false;
+                self.threshold_validation = ThresholdValidation::Idle;
+            }
+            InputAction::SettingsLeft => {
+                self.temp_prev_threshold = self.temp_prev_threshold
+                    .saturating_sub(PREV_RESTART_THRESHOLD_STEP)
+                    .max(PREV_RESTART_THRESHOLD_MIN);
+                self.threshold_validation = ThresholdValidation::Idle;
+            }
+            InputAction::SettingsRight => {
+                self.temp_prev_threshold = self.temp_prev_threshold
+                    .saturating_add(PREV_RESTART_THRESHOLD_STEP)
+                    .min(100);
+                self.threshold_validation = ThresholdValidation::Idle;
+            }
+            InputAction::SettingsTypeChar(c) if c.is_ascii_digit() => {
+                let digit = c.to_digit(10).unwrap() as u8;
+                let new_val = (self.temp_prev_threshold % 10) * 10 + digit;
+                
+                if new_val <= 100 {
+                    self.temp_prev_threshold = new_val;
+                    self.threshold_validation = if new_val < PREV_RESTART_THRESHOLD_MIN {
+                        ThresholdValidation::Error(format!(
+                            "Minimum is {}%.",
+                            PREV_RESTART_THRESHOLD_MIN
+                        ))
+                    } else {
+                        ThresholdValidation::Idle
+                    };
                 }
             }
             _ => {}
@@ -244,6 +340,9 @@ impl SettingsState {
                 SettingsField::MusicPath => {
                     self.editing_path = true;
                     self.path_validation = PathValidation::Idle;
+                }
+                SettingsField::PrevRestartThreshold => {
+                    self.editing_prev_threshold = true;
                 }
             },
             InputAction::SettingsLeft if self.selected == SettingsField::Repeat => {
