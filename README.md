@@ -14,7 +14,7 @@ browser UI.
 - Full-screen interactive browser: `browse` (TUI)
 - Fuzzy search across **title**, **artist**, and **album**
 - Sorting by **title**, **artist**, **album**, or **duration**
-- Shuffle + repeat modes + volume, persisted between runs
+- Shuffle + repeat modes + volume + previous-track restart threshold, persisted between runs
 - Supported extensions: **mp3**, **flac**, **wav**, **ogg**
 
 ## Install
@@ -99,6 +99,8 @@ hextune playlist
 - `volume [0..100]`: set volume (or show current volume if omitted)
 - `shuffle [true|false]`: toggle shuffle (or set it explicitly if provided)
 - `loop [off|all|one]`: cycle repeat mode (or set it explicitly if provided)
+- `status`: show the current player status
+- `prev-threshold [5..100]`: set the “previous track restart” threshold (or show current if omitted)
 
 ### Examples
 
@@ -110,6 +112,7 @@ hextune select 42
 hextune volume 70
 hextune shuffle true
 hextune loop all
+hextune prev-threshold 25
 
 hextune sort artist
 ```
@@ -121,7 +124,7 @@ hextune sort artist
 - Navigate: `↑/↓` or `j/k`
 - Play selected: `Enter`
 - Pause/resume: `Space` or `p`
-- Next/previous: `n` / `b` (also `→` / `←`)
+- Next/previous: `n` / `b` (also `→` / `←`)  “previous” restarts the current track if played ≥ threshold%, otherwise skips back
 - Toggle shuffle: `r`
 - Cycle sort field: `o`
 - Refresh library scan: `F5` or `u`
@@ -145,6 +148,7 @@ hextune sort artist
 - Navigate fields: `↑/↓` or `j/k`
 - **Volume**: `Enter` to edit, `←/→` adjusts by 5, digits type a value, `Enter` confirm, `Esc` cancel
 - **Repeat**: `Enter`/`→` cycles forward, `←` cycles backward
+- **Prev threshold**: `Enter` to edit, `←/→` adjusts by 5, digits type a value, `Enter` confirm, `Esc` cancel (5–100%)
 - **Music path**: `Enter` to edit, type a path, `Enter` to confirm (validated), `Esc` cancel, `Ctrl+u` clear
 
 ## Keymap configuration (`keymap.toml`)
@@ -218,7 +222,7 @@ Text entry is intentionally not configurable:
 
 ## Data storage
 
-`hextune` stores its state (library + settings like volume/shuffle/repeat/path) in:
+`hextune` stores its state (library + settings like volume/shuffle/repeat/prev-threshold/path) in:
 
 - `<config dir>/hextune/db.json`
 

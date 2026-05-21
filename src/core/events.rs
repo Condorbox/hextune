@@ -138,6 +138,9 @@ pub enum UiEvent {
 
     /// User requested the sort field to advance to the next option
     SortCycleRequested,
+
+    /// Set the previous-track restart threshold (5–100 percent)
+    PrevThresholdSet { threshold: u8 },
 }
 
 /// Type alias for event sender

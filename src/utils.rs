@@ -16,6 +16,10 @@ pub const CLI_PLAYBACK_POLL_MS: u64 = 100;
 
 pub const SCAN_PROGRESS_INTERVAL: usize = 25;
 
+pub const PREV_RESTART_THRESHOLD_DEFAULT: u8 = 10;
+pub const PREV_RESTART_THRESHOLD_MIN: u8 = 5;
+pub const PREV_RESTART_THRESHOLD_STEP: u8 = 5;
+
 /// Convert user volume percentage (0-100) to amplitude multiplier using perceptual scaling
 ///
 /// Human hearing is logarithmic, so we use x^4 to approximate an exponential curve.

@@ -99,3 +99,58 @@ fn repeat_mode_description(mode: RepeatMode) -> &'static str {
         RepeatMode::One => "(repeat current song)",
     }
 }
+
+// ── PrevThreshold ────────────────────────────────────────────────────
+pub struct PrevThresholdCommand {
+    pub threshold: Option<u8>,
+}
+
+impl CliCommand for PrevThresholdCommand {
+    fn execute(self: Box<Self>) -> Result<()> {
+        let ctx = CliContext::load()?;
+
+        match self.threshold {
+            Some(threshold) => {
+                let mut app = CliContext::new_app(ctx)?;
+
+                app.init()?;
+                app.event_sender()
+                    .send(AppEvent::Ui(UiEvent::PrevThresholdSet { threshold }))?;
+                app.run_once()?;
+                app.cleanup()?;
+
+
+                let ui = TerminalRenderer::new();
+                ui.print_message(&format!("Restart threshold: {}%", threshold));
+            }
+
+            None => {
+                ctx.ui.print_message(&format!("Restart threshold: {}%", ctx.state.config.prev_restart_threshold));
+            }
+        }
+
+        /*match self.volume {
+            Some(vol) => {
+                let volume_f32 = volume_percent_to_amplitude(vol);
+
+                let mut app = CliContext::new_app(ctx)?;
+
+                app.init()?;
+                app.event_sender()
+                    .send(AppEvent::Playback(PlaybackEvent::VolumeChanged { volume: volume_f32 }))?;
+                app.run_once()?;
+                app.cleanup()?;
+
+                let ui = TerminalRenderer::new();
+                ui.print_message(&format!("Volume set to: {}%", vol));
+            }
+            None => {
+                let current_percent = amplitude_to_volume(ctx.state.config.volume);
+                ctx.ui.print_message(&format!("Current volume: {}%", current_percent));
+            }
+        }*/
+
+
+        Ok(())
+    }
+}

@@ -23,10 +23,13 @@ impl CliCommand for StatusCommand {
             .map(|p| p.display().to_string())
             .unwrap_or_else(|| "(not set)".to_string());
 
+        let prev_threshold = ctx.state.config.prev_restart_threshold;
+        
         ctx.ui.print_message(&format!("─── {} ──────────────────────────", APP_NAME));
         ctx.ui.print_message(&format!("  Volume   {}%", volume));
         ctx.ui.print_message(&format!("  Shuffle  {}", shuffle));
         ctx.ui.print_message(&format!("  Repeat   {}", repeat));
+        ctx.ui.print_message(&format!("  Prev back {}%", prev_threshold));
         ctx.ui.print_message("────────────────────────────────────────");
         ctx.ui.print_message(&format!("  Library  {} songs", song_count));
         ctx.ui.print_message(&format!("  Path     {}", library_path));
