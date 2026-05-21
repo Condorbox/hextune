@@ -129,28 +129,6 @@ impl CliCommand for PrevThresholdCommand {
             }
         }
 
-        /*match self.volume {
-            Some(vol) => {
-                let volume_f32 = volume_percent_to_amplitude(vol);
-
-                let mut app = CliContext::new_app(ctx)?;
-
-                app.init()?;
-                app.event_sender()
-                    .send(AppEvent::Playback(PlaybackEvent::VolumeChanged { volume: volume_f32 }))?;
-                app.run_once()?;
-                app.cleanup()?;
-
-                let ui = TerminalRenderer::new();
-                ui.print_message(&format!("Volume set to: {}%", vol));
-            }
-            None => {
-                let current_percent = amplitude_to_volume(ctx.state.config.volume);
-                ctx.ui.print_message(&format!("Current volume: {}%", current_percent));
-            }
-        }*/
-
-
         Ok(())
     }
 }
