@@ -1,7 +1,7 @@
 use crate::application::handlers::HandlerContext;
 use crate::core::events::{AppEvent, LibraryEvent, PlaybackEvent, UiEvent};
 use crate::core::models::RepeatMode;
-use crate::utils::volume_percent_to_amplitude;
+use crate::utils::{volume_percent_to_amplitude, PREV_RESTART_THRESHOLD};
 use anyhow::Result;
 use crate::modules::library::sorter::SortField;
 
@@ -66,16 +66,36 @@ impl UiHandler {
 
             UiEvent::PreviousTrackRequested => {
                 // RepeatMode::One does not loop on manual nav — user explicitly wants to move.
-                let (current_index, library_len, loop_playlist) = {
+                let (current_index, library_len, loop_playlist, should_restart) = {
                     let state = ctx.state.lock().unwrap();
+                    let should_restart = state
+                        .playback
+                        .current_song
+                        .as_ref()
+                        .and_then(|s| s.duration)
+                        .is_some_and(|d| {
+                            !d.is_zero() &&
+                                state.playback.current_elapsed > d.mul_f64(PREV_RESTART_THRESHOLD)
+                        });
+
                     (
                         state.ui.selected_index,
                         state.library.songs.len(),
                         state.config.repeat == RepeatMode::All,
+                        should_restart,
                     )
                 };
-
-                ctx.advance_to_prev(current_index, library_len, loop_playlist)?;
+                
+                if should_restart {
+                    // Re-play the current song from the beginning.
+                    let song = ctx.state.lock().unwrap().playback.current_song.clone();
+                    if let Some(song) = song {
+                        ctx.event_tx
+                            .send(AppEvent::Playback(PlaybackEvent::PlayRequested { song }))?;
+                    }
+                } else {
+                    ctx.advance_to_prev(current_index, library_len, loop_playlist)?;
+                }
             }
 
             UiEvent::VolumeChangeRequested { volume } => {
