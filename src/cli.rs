@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use clap::builder::PossibleValue;
 use crate::core::models::RepeatMode;
 use crate::modules::library::sorter::SortField;
-use crate::utils::{APP_NAME, VOLUME_MAX};
+use crate::utils::{APP_NAME, PREV_RESTART_THRESHOLD_MIN, VOLUME_MAX};
 
 #[derive(Parser)]
 #[command(name = APP_NAME)]
@@ -87,7 +87,10 @@ pub enum Commands {
     PrevThreshold {
         /// Percentage of song played after which "previous" restarts the current
         /// track instead of skipping back. Accepted range: 5–100.
-        #[arg(value_parser = clap::value_parser!(u8).range(5..=100))]
+        #[arg(
+            value_parser = clap::value_parser!(u8)
+                .range(i64::from(PREV_RESTART_THRESHOLD_MIN)..=i64::from(100))
+        )]
         threshold: Option<u8>,
     },
 }
