@@ -240,3 +240,135 @@ impl UiHandler {
             })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+    use crate::utils::{PREV_RESTART_THRESHOLD_DEFAULT, PREV_RESTART_THRESHOLD_MIN};
+
+    fn song_with_duration(secs: u64) -> Song {
+        Song {
+            path: PathBuf::from("test.mp3"),
+            title: "Test".to_owned(),
+            artists: vec![],
+            album: None,
+            track_number: None,
+            duration: Some(Duration::from_secs(secs)),
+            search_key: "test".to_owned(),
+            order: 0,
+        }
+    }
+
+    fn song_without_duration() -> Song {
+        Song {
+            path: PathBuf::from("test.mp3"),
+            title: "Test".to_owned(),
+            artists: vec![],
+            album: None,
+            track_number: None,
+            duration: None,
+            search_key: "test".to_owned(),
+            order: 0,
+        }
+    }
+
+    // ── Default threshold (10%) ───────────────────────────────────────────────
+
+    #[test]
+    fn restarts_when_past_default_threshold() {
+        let song = song_with_duration(100);
+        // 15s / 100s = 15% > 10%
+        assert!(UiHandler::should_restart_current(
+            Duration::from_secs(15),
+            Some(&song),
+            PREV_RESTART_THRESHOLD_DEFAULT,
+        ));
+    }
+
+    #[test]
+    fn no_restart_when_before_default_threshold() {
+        let song = song_with_duration(100);
+        // 5s / 100s = 5% < 10%
+        assert!(!UiHandler::should_restart_current(
+            Duration::from_secs(5),
+            Some(&song),
+            PREV_RESTART_THRESHOLD_DEFAULT,
+        ));
+    }
+
+    #[test]
+    fn no_restart_at_exact_threshold_boundary() {
+        let song = song_with_duration(100);
+        // 10s / 100s = exactly 10%; we use strict >, so no restart
+        assert!(!UiHandler::should_restart_current(
+            Duration::from_secs(10),
+            Some(&song),
+            PREV_RESTART_THRESHOLD_DEFAULT,
+        ));
+    }
+
+    // ── Edge cases ────────────────────────────────────────────────────────────
+
+    #[test]
+    fn no_restart_when_no_song_playing() {
+        assert!(!UiHandler::should_restart_current(
+            Duration::from_secs(50),
+            None,
+            PREV_RESTART_THRESHOLD_DEFAULT,
+        ));
+    }
+
+    #[test]
+    fn no_restart_when_song_has_no_duration() {
+        let song = song_without_duration();
+        assert!(!UiHandler::should_restart_current(
+            Duration::from_secs(50),
+            Some(&song),
+            PREV_RESTART_THRESHOLD_DEFAULT,
+        ));
+    }
+
+    #[test]
+    fn no_restart_at_zero_elapsed() {
+        let song = song_with_duration(100);
+        assert!(!UiHandler::should_restart_current(
+            Duration::ZERO,
+            Some(&song),
+            PREV_RESTART_THRESHOLD_DEFAULT,
+        ));
+    }
+
+    // ── Custom thresholds ─────────────────────────────────────────────────────
+
+    #[test]
+    fn restarts_with_custom_threshold_50pct() {
+        let song = song_with_duration(100);
+        assert!(!UiHandler::should_restart_current(Duration::from_secs(30), Some(&song), 50));
+        assert!(UiHandler::should_restart_current(Duration::from_secs(60), Some(&song), 50));
+    }
+
+    #[test]
+    fn minimum_threshold_5pct_works_correctly() {
+        let song = song_with_duration(100);
+        // 4s = 4% < 5% → navigate back
+        assert!(!UiHandler::should_restart_current(
+            Duration::from_secs(4),
+            Some(&song),
+            PREV_RESTART_THRESHOLD_MIN,
+        ));
+        // 6s = 6% > 5% → restart
+        assert!(UiHandler::should_restart_current(
+            Duration::from_secs(6),
+            Some(&song),
+            PREV_RESTART_THRESHOLD_MIN,
+        ));
+    }
+
+    #[test]
+    fn maximum_threshold_100pct_never_restarts_before_end() {
+        let song = song_with_duration(100);
+        // Even at 99s it's only 99%, not > 100%
+        assert!(!UiHandler::should_restart_current(Duration::from_secs(99), Some(&song), 100));
+    }
+}

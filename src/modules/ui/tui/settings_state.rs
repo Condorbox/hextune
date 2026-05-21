@@ -260,7 +260,7 @@ impl SettingsState {
             InputAction::SettingsTypeChar(c) if c.is_ascii_digit() => {
                 let digit = c.to_digit(10).unwrap() as u8;
                 let new_val = (self.temp_prev_threshold % 10) * 10 + digit;
-                
+
                 if new_val <= 100 {
                     self.temp_prev_threshold = new_val;
                     self.threshold_validation = if new_val < PREV_RESTART_THRESHOLD_MIN {
@@ -374,8 +374,16 @@ mod tests {
         assert_eq!(s.selected(), SettingsField::Repeat);
     }
 
+    fn open_and_select_prev_threshold(s: &mut SettingsState) {
+        s.open();
+        s.apply_action(InputAction::SettingsNavigateDown);
+        s.apply_action(InputAction::SettingsNavigateDown);
+        assert_eq!(s.selected(), SettingsField::PrevRestartThreshold);
+    }
+
     fn open_and_select_path(s: &mut SettingsState) {
         s.open();
+        s.apply_action(InputAction::SettingsNavigateDown);
         s.apply_action(InputAction::SettingsNavigateDown);
         s.apply_action(InputAction::SettingsNavigateDown);
         assert_eq!(s.selected(), SettingsField::MusicPath);
@@ -433,6 +441,126 @@ mod tests {
         assert_eq!(s.temp_volume(), 5);
         s.apply_action(InputAction::SettingsTypeChar('0'));
         assert_eq!(s.temp_volume(), 50);
+    }
+
+    #[test]
+    fn prev_threshold_default_value_is_correct() {
+        let s = SettingsState::default();
+        assert_eq!(s.temp_prev_threshold(), PREV_RESTART_THRESHOLD_DEFAULT);
+    }
+
+    #[test]
+    fn prev_threshold_edit_confirm_emits_event() {
+        let mut s = SettingsState::default();
+        open_and_select_prev_threshold(&mut s);
+
+        let events = s.apply_action(InputAction::SettingsConfirm);
+        assert!(events.is_empty(), "Confirm should enter edit mode, not emit yet");
+        assert!(s.is_editing_prev_threshold());
+
+        s.apply_action(InputAction::SettingsRight);
+        let events = s.apply_action(InputAction::SettingsConfirm);
+        assert!(!s.is_editing_prev_threshold());
+        assert_eq!(events.len(), 1);
+        assert!(
+            matches!(events[0], UiEvent::PrevThresholdSet { .. }),
+            "expected PrevThresholdSet, got {:?}", events[0]
+        );
+    }
+
+    #[test]
+    fn prev_threshold_edit_close_cancels_without_emitting_and_keeps_modal_open() {
+        let mut s = SettingsState::default();
+        open_and_select_prev_threshold(&mut s);
+        s.apply_action(InputAction::SettingsConfirm);
+        assert!(s.is_editing_prev_threshold());
+
+        let events = s.apply_action(InputAction::SettingsClose);
+        assert!(events.is_empty());
+        assert!(s.is_open());
+        assert!(!s.is_editing_prev_threshold());
+    }
+
+    #[test]
+    fn prev_threshold_right_increases_by_step() {
+        let mut s = SettingsState::default();
+        open_and_select_prev_threshold(&mut s);
+        s.apply_action(InputAction::SettingsConfirm);
+
+        let before = s.temp_prev_threshold();
+        s.apply_action(InputAction::SettingsRight);
+        assert_eq!(s.temp_prev_threshold(), before + PREV_RESTART_THRESHOLD_STEP);
+    }
+
+    #[test]
+    fn prev_threshold_left_decreases_by_step() {
+        let mut s = SettingsState::default();
+        open_and_select_prev_threshold(&mut s);
+        s.apply_action(InputAction::SettingsConfirm);
+
+        // First raise it so we have room to decrease
+        s.apply_action(InputAction::SettingsRight);
+        s.apply_action(InputAction::SettingsRight);
+        let before = s.temp_prev_threshold();
+        s.apply_action(InputAction::SettingsLeft);
+        assert_eq!(s.temp_prev_threshold(), before - PREV_RESTART_THRESHOLD_STEP);
+    }
+
+    #[test]
+    fn prev_threshold_clamped_to_minimum() {
+        let mut s = SettingsState::default();
+        open_and_select_prev_threshold(&mut s);
+        s.apply_action(InputAction::SettingsConfirm);
+
+        // Press left many times — should not go below MIN
+        for _ in 0..20 {
+            s.apply_action(InputAction::SettingsLeft);
+        }
+        assert_eq!(s.temp_prev_threshold(), PREV_RESTART_THRESHOLD_MIN);
+    }
+
+    #[test]
+    fn prev_threshold_clamped_to_maximum() {
+        let mut s = SettingsState::default();
+        open_and_select_prev_threshold(&mut s);
+        s.apply_action(InputAction::SettingsConfirm);
+
+        // Press right many times — should not exceed 100
+        for _ in 0..30 {
+            s.apply_action(InputAction::SettingsRight);
+        }
+        assert_eq!(s.temp_prev_threshold(), 100);
+    }
+
+    #[test]
+    fn prev_threshold_digit_typing_valid_range() {
+        let mut s = SettingsState::default();
+        open_and_select_prev_threshold(&mut s);
+        s.apply_action(InputAction::SettingsConfirm);
+
+        s.apply_action(InputAction::SettingsTypeChar('5'));
+        assert_eq!(s.temp_prev_threshold(), 5);
+
+        s.apply_action(InputAction::SettingsTypeChar('0'));
+        assert_eq!(s.temp_prev_threshold(), 50);
+    }
+
+    #[test]
+    fn prev_threshold_emitted_value_matches_temp() {
+        let mut s = SettingsState::default();
+        open_and_select_prev_threshold(&mut s);
+        s.apply_action(InputAction::SettingsConfirm);
+        s.apply_action(InputAction::SettingsRight);
+        s.apply_action(InputAction::SettingsRight);
+        let expected = s.temp_prev_threshold();
+
+        let events = s.apply_action(InputAction::SettingsConfirm);
+        assert_eq!(events.len(), 1);
+        if let UiEvent::PrevThresholdSet { threshold } = events[0] {
+            assert_eq!(threshold, expected);
+        } else {
+            panic!("expected PrevThresholdSet");
+        }
     }
 
     #[test]
