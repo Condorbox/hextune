@@ -23,12 +23,12 @@ browser UI.
 
 **Linux & macOS:**
 ```bash
-curl --proto '=https' --tlsv1.2 -LsSf https://github.com/Condorbox/hextune/releases/download/v1.0.0/hextune-installer.sh | sh
+curl --proto '=https' --tlsv1.2 -LsSf https://github.com/Condorbox/hextune/releases/download/v1.1.0/hextune-installer.sh | sh
 ```
 
 **Windows (PowerShell):**
 ```powershell
-powershell -ExecutionPolicy Bypass -c "irm https://github.com/Condorbox/hextune/releases/download/v1.0.0/hextune-installer.ps1 | iex"
+powershell -ExecutionPolicy Bypass -c "irm https://github.com/Condorbox/hextune/releases/download/v1.1.0/hextune-installer.ps1 | iex"
 ```
 
 Or download the binary directly from the [latest release](https://github.com/Condorbox/hextune/releases/latest) for your platform:
